@@ -8,7 +8,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 from classes import FoodDataset
-from classes import NeuralNetwork
 from classes import FocalTverskyLoss
 from torch import nn
 from torch.utils.data import DataLoader
@@ -20,7 +19,7 @@ import utils
 
 
 def to_tensor():
-    tensors = [torchvision.transforms.Resize((400,400)), torchvision.transforms.ToTensor()]
+    tensors = [torchvision.transforms.Resize((500,500)), torchvision.transforms.ToTensor()]
     return torchvision.transforms.Compose(tensors)
 
 
@@ -39,36 +38,36 @@ def visualise_annotations(coco):
     plt.show()
 
 
-def train(model, device, train_loader, optimizer):
-    model.train()
-    y_true = []
-    y_pred = []
-    for i in train_loader:
-
-        # LOADING THE DATA IN A BATCH
-        data, target = i
-
-        # MOVING THE TENSORS TO THE CONFIGURED DEVICE
-        data, target = data.to(device), target.to(device)
-
-        # FORWARD PASS
-        output = model(data.float())
-        loss = FocalTverskyLoss(output)
-        #loss = criterion(output, target.unsqueeze(1))
-
-        # BACKWARD AND OPTIMIZE
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        # PREDICTIONS
-        pred = np.round(output.detach())
-        target = np.round(target.detach())
-        y_pred.extend(pred.tolist())
-        y_true.extend(target.tolist())
-
-        print("Accuracy on training set is",
-              accuracy_score(y_true, y_pred))
+# def train(model, device, train_loader, optimizer):
+#     model.train()
+#     y_true = []
+#     y_pred = []
+#     for i in train_loader:
+#
+#         # LOADING THE DATA IN A BATCH
+#         data, target = i
+#
+#         # MOVING THE TENSORS TO THE CONFIGURED DEVICE
+#         data, target = data.to(device), target.to(device)
+#
+#         # FORWARD PASS
+#         output = model(data.float())
+#         loss = FocalTverskyLoss(output)
+#         #loss = criterion(output, target.unsqueeze(1))
+#
+#         # BACKWARD AND OPTIMIZE
+#         optimizer.zero_grad()
+#         loss.backward()
+#         optimizer.step()
+#
+#         # PREDICTIONS
+#         pred = np.round(output.detach())
+#         target = np.round(target.detach())
+#         y_pred.extend(pred.tolist())
+#         y_true.extend(target.tolist())
+#
+#         print("Accuracy on training set is",
+#               accuracy_score(y_true, y_pred))
 
 
 def val(model, device, test_loader):
@@ -140,16 +139,18 @@ if __name__ == '__main__':
     # print(len(nms))
 
     #visualise_annotations()
-    num_epochs = 100
+    num_epochs = 50
 
     training_data = FoodDataset(root=training_path, annotation=training_json, transforms=to_tensor())
     validation_data = FoodDataset(root=test_path, annotation=test_json, transforms=to_tensor())
-    training_dataloader = DataLoader(training_data, batch_size=64, shuffle=True)
+    training_dataloader = DataLoader(training_data, batch_size=64, shuffle=True, collate_fn=training_data.collate_fn)
     validation_dataloader = DataLoader(validation_data, batch_size=64, shuffle=True)
+
+    print(training_dataloader)
 
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-    num_classes = 273
+    num_classes = 2
     # get the model using our helper function
     model = get_model_instance_segmentation(num_classes)
 
@@ -166,11 +167,19 @@ if __name__ == '__main__':
                                                    gamma=0.1)
 
     for epoch in range(num_epochs):
-        # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, training_dataloader, device, epoch, print_freq=10)
-        # update the learning rate
-        lr_scheduler.step()
-        # evaluate on the test dataset
-        val(model, device, validation_dataloader)
+        model.train()
+        i = 0
+        for imgs, annotations in training_dataloader:
+            i += 1
+            imgs = list(img.to(device) for img in imgs)
+            annotations = [{k: v.to(device) for k, v in t.items()} for t in annotations]
+            loss_dict = model(imgs, annotations)
+            losses = sum(loss for loss in loss_dict.values())
+
+            optimizer.zero_grad()
+            losses.backward()
+            optimizer.step()
+
+            print(f'Iteration: {i}/{len(training_dataloader)}, Loss: {losses}')
 
     print("That's it!")

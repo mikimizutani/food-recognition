@@ -57,30 +57,31 @@ class FoodDataset(torch.utils.data.Dataset):
 
         if self.transforms is not None:
             img = self.transforms(img)
-
+        print(my_annotation)
         return img, my_annotation
 
     def __len__(self):
         return len(self.ids)
 
+    def collate_fn(self, batch):
+        """
+        Since each image may have a different number of objects, we need a collate function (to be passed to the DataLoader).
+        This describes how to combine these tensors of different sizes. We use lists.
+        Note: this need not be defined in this Class, can be standalone.
+        :param batch: an iterable of N sets from __getitem__()
+        :return: a tensor of images, lists of varying-size tensors of bounding boxes, labels, and difficulties
+        """
 
-class NeuralNetwork(nn.Module):
-    def __init__(self):
-        super(NeuralNetwork, self).__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(28*28, 512),
-            nn.ReLU(),
-            nn.Linear(512, 512),
-            nn.ReLU(),
-            nn.Linear(512, 10),
-            nn.ReLU()
-        )
+        images = list()
+        annotations = list()
 
-    def forward(self, x):
-        x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
+        for b in batch:
+            images.append(b[0])
+            annotations.append(b[1])
+
+        images = torch.stack(images, dim=0)
+
+        return images, annotations # tensor (N, 3, 300, 300), 3 lists of N tensors each
 
 
 ALPHA = 0.5
