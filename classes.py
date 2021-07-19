@@ -51,7 +51,7 @@ class FoodDataset(torch.utils.data.Dataset):
             areas.append(coco_annotation[i]['area'])
             labels.append(coco_annotation[i]['category_id'])
         areas = torch.as_tensor(areas, dtype=torch.float32)
-        labels = torch.as_tensor(labels, dtype=torch.float32)
+        labels = torch.as_tensor(labels, dtype=torch.int64)
         # Iscrowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
