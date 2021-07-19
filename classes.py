@@ -45,13 +45,18 @@ class FoodDataset(torch.utils.data.Dataset):
         # Tensorise img_id
         img_id = torch.tensor([img_id])
         # Size of bbox (Rectangular)
+        areas = []
         labels = []
         for i in range(num_objs):
-            labels.append(coco_annotation[i]['name'])
+            areas.append(coco_annotation[i]['area'])
+            labels.append(coco_annotation[i]['category_id'])
+        areas = torch.as_tensor(areas, dtype=torch.float32)
         labels = torch.as_tensor(labels, dtype=torch.float32)
+        # Iscrowd
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
         # Annotation is in dictionary format
-        my_annotation = {"boxes": boxes, "labels": labels, "image_id": img_id}
+        my_annotation = {"boxes": boxes, "labels": labels, "image_id": img_id, "area": areas, "iscrowd": iscrowd}
 
         if self.transforms is not None:
             img = self.transforms(img)
