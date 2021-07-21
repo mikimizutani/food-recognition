@@ -12,6 +12,12 @@ class FoodDataset(torch.utils.data.Dataset):
         self.transforms = transforms
         self.coco = COCO(annotation)
         self.ids = list(sorted(self.coco.imgs.keys()))
+        self.json_category_id_to_contiguous_id = {
+            v: i for i, v in enumerate(sorted(self.coco.getCatIds()))
+        }
+        self.contiguous_category_id_to_json_id = {
+            v: k for k, v in self.json_category_id_to_contiguous_id.items()
+        }
 
     def __getitem__(self, index):
         coco = self.coco
@@ -51,6 +57,7 @@ class FoodDataset(torch.utils.data.Dataset):
             areas.append(coco_annotation[i]['area'])
             labels.append(coco_annotation[i]['category_id'])
         areas = torch.as_tensor(areas, dtype=torch.float32)
+        labels = [self.json_category_id_to_contiguous_id[c] for c in labels]
         labels = torch.as_tensor(labels, dtype=torch.int64)
         # Iscrowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
