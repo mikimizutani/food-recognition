@@ -44,6 +44,8 @@ class FoodDataset(torch.utils.data.Dataset):
             ymin = coco_annotation[i]['bbox'][1]
             xmax = xmin + coco_annotation[i]['bbox'][2]
             ymax = ymin + coco_annotation[i]['bbox'][3]
+            if(xmin == xmax) or (ymin == ymax):
+                continue
             boxes.append([xmin, ymin, xmax, ymax])
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
         # Labels (In my case, I only one class: target class or background)
