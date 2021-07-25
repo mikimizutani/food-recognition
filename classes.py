@@ -13,7 +13,7 @@ class FoodDataset(torch.utils.data.Dataset):
         self.coco = COCO(annotation)
         self.ids = list(sorted(self.coco.imgs.keys()))
         self.json_category_id_to_contiguous_id = {
-            v: i for i, v in enumerate(sorted(self.coco.getCatIds()))
+            v: i+1 for i, v in enumerate(sorted(self.coco.getCatIds()))
         }
         self.contiguous_category_id_to_json_id = {
             v: k for k, v in self.json_category_id_to_contiguous_id.items()
@@ -35,6 +35,7 @@ class FoodDataset(torch.utils.data.Dataset):
         # number of objects in the image
         num_objs = len(coco_annotation)
 
+
         # Bounding boxes for objects
         # In coco format, bbox = [xmin, ymin, width, height]
         # In pytorch, the input should be [xmin, ymin, xmax, ymax]
@@ -55,21 +56,26 @@ class FoodDataset(torch.utils.data.Dataset):
         # Size of bbox (Rectangular)
         areas = []
         labels = []
+        masks = []
+
         for i in range(num_objs):
             areas.append(coco_annotation[i]['area'])
             labels.append(coco_annotation[i]['category_id'])
+            masks.append(coco.annToMask(coco_annotation[i]))
+
         areas = torch.as_tensor(areas, dtype=torch.float32)
         labels = [self.json_category_id_to_contiguous_id[c] for c in labels]
         labels = torch.as_tensor(labels, dtype=torch.int64)
+
+        masks = torch.as_tensor(masks, dtype=torch.uint8)
         # Iscrowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
 
         # Annotation is in dictionary format
-        my_annotation = {"boxes": boxes, "labels": labels, "image_id": img_id, "area": areas, "iscrowd": iscrowd}
+        my_annotation = {"boxes": boxes, "labels": labels, "masks": masks, "image_id": img_id, "area": areas, "iscrowd": iscrowd}
 
         if self.transforms is not None:
             img = self.transforms(img)
-        print(my_annotation)
         return img, my_annotation
 
     def __len__(self):
@@ -94,6 +100,7 @@ class FoodDataset(torch.utils.data.Dataset):
         images = torch.stack(images, dim=0)
 
         return images, annotations # tensor (N, 3, 300, 300), 3 lists of N tensors each
+
 
 
 ALPHA = 0.5
