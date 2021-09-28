@@ -3,20 +3,22 @@ import os
 from PIL import Image
 import torch.utils.data
 from pycocotools.coco import COCO
-from torch import nn
+import torch.nn.functional
+import skimage.transform
 
-
+#Adapted from https://medium.com/fullstackai/how-to-train-an-object-detector-with-your-own-coco-dataset-in-pytorch-319e7090da5
+# and from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/datasets.py
 class FoodDataset(torch.utils.data.Dataset):
     def __init__(self, root, annotation, transforms=None):
         self.root = root
         self.transforms = transforms
         self.coco = COCO(annotation)
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.json_category_id_to_contiguous_id = {
+        self.json_category_id_to_continuous_id = {
             v: i+1 for i, v in enumerate(sorted(self.coco.getCatIds()))
         }
-        self.contiguous_category_id_to_json_id = {
-            v: k for k, v in self.json_category_id_to_contiguous_id.items()
+        self.continuous_category_id_to_json_id = {
+            v: k for k, v in self.json_category_id_to_continuous_id.items()
         }
 
     def __getitem__(self, index):
@@ -35,47 +37,45 @@ class FoodDataset(torch.utils.data.Dataset):
         # number of objects in the image
         num_objs = len(coco_annotation)
 
-
         # Bounding boxes for objects
         # In coco format, bbox = [xmin, ymin, width, height]
         # In pytorch, the input should be [xmin, ymin, xmax, ymax]
         boxes = []
+        width, height = img.size
+        width_scale = 512 / width
+        height_scale = 512 / height
         for i in range(num_objs):
-            xmin = coco_annotation[i]['bbox'][0]
-            ymin = coco_annotation[i]['bbox'][1]
-            xmax = xmin + coco_annotation[i]['bbox'][2]
-            ymax = ymin + coco_annotation[i]['bbox'][3]
+            xmin = (coco_annotation[i]['bbox'][1]) * width_scale
+            ymin = (coco_annotation[i]['bbox'][0]) * height_scale
+            xmax = xmin + (coco_annotation[i]['bbox'][3] * width_scale)
+            ymax = ymin + (coco_annotation[i]['bbox'][2] * height_scale)
             if(xmin == xmax) or (ymin == ymax):
                 continue
             boxes.append([xmin, ymin, xmax, ymax])
         boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        # Labels (In my case, I only one class: target class or background)
-        #labels = torch.ones((num_objs,), dtype=torch.int64)
-        # Tensorise img_id
         img_id = torch.tensor([img_id])
-        # Size of bbox (Rectangular)
         areas = []
         labels = []
         masks = []
 
         for i in range(num_objs):
             areas.append(coco_annotation[i]['area'])
-            labels.append(coco_annotation[i]['category_id'])
-            masks.append(coco.annToMask(coco_annotation[i]))
+            cat_id = self.json_category_id_to_continuous_id[coco_annotation[i]['category_id']]
+            labels.append(cat_id)
+            mask = coco.annToMask(coco_annotation[i])
+            mask = skimage.transform.resize(mask, (512,512), order=0, preserve_range=True, anti_aliasing=False)
+            masks.append(mask)
 
         areas = torch.as_tensor(areas, dtype=torch.float32)
-        labels = [self.json_category_id_to_contiguous_id[c] for c in labels]
         labels = torch.as_tensor(labels, dtype=torch.int64)
-
         masks = torch.as_tensor(masks, dtype=torch.uint8)
+
         # Iscrowd
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+        img = self.transforms(img)
 
         # Annotation is in dictionary format
         my_annotation = {"boxes": boxes, "labels": labels, "masks": masks, "image_id": img_id, "area": areas, "iscrowd": iscrowd}
-
-        if self.transforms is not None:
-            img = self.transforms(img)
         return img, my_annotation
 
     def __len__(self):
@@ -100,32 +100,3 @@ class FoodDataset(torch.utils.data.Dataset):
         images = torch.stack(images, dim=0)
 
         return images, annotations # tensor (N, 3, 300, 300), 3 lists of N tensors each
-
-
-
-ALPHA = 0.5
-BETA = 0.5
-GAMMA = 2
-
-
-class FocalTverskyLoss(nn.Module):
-    def __init__(self, weight=None, size_average=True):
-        super(FocalTverskyLoss, self).__init__()
-
-    def forward(self, inputs, targets, smooth=1, alpha=ALPHA, beta=BETA, gamma=GAMMA):
-        # comment out if your model contains a sigmoid or equivalent activation layer
-        inputs = F.sigmoid(inputs)
-
-        # flatten label and prediction tensors
-        inputs = inputs.view(-1)
-        targets = targets.view(-1)
-
-        # True Positives, False Positives & False Negatives
-        TP = (inputs * targets).sum()
-        FP = ((1 - targets) * inputs).sum()
-        FN = (targets * (1 - inputs)).sum()
-
-        Tversky = (TP + smooth) / (TP + alpha * FP + beta * FN + smooth)
-        FocalTversky = (1 - Tversky) ** gamma
-
-        return FocalTversky
